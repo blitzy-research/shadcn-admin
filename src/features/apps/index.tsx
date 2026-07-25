@@ -17,6 +17,7 @@ import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { ConnectDogeSCMDialog } from './components/connect-dogescm-dialog'
 import { apps } from './data/apps'
 
 const route = getRouteApi('/_authenticated/apps/')
@@ -40,6 +41,7 @@ export function Apps() {
   const [sort, setSort] = useState(initSort)
   const [appType, setAppType] = useState(type)
   const [searchTerm, setSearchTerm] = useState(filter)
+  const [dogeConnected, setDogeConnected] = useState(false)
 
   const filteredApps = apps
     .sort((a, b) =>
@@ -47,13 +49,15 @@ export function Apps() {
         ? a.name.localeCompare(b.name)
         : b.name.localeCompare(a.name)
     )
-    .filter((app) =>
-      appType === 'connected'
-        ? app.connected
+    .filter((app) => {
+      const isConnected =
+        app.connected || (app.name === 'DogeSCM' && dogeConnected)
+      return appType === 'connected'
+        ? isConnected
         : appType === 'notConnected'
-          ? !app.connected
+          ? !isConnected
           : true
-    )
+    })
     .filter((app) => app.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
@@ -145,31 +149,42 @@ export function Apps() {
         </div>
         <Separator className='shadow-sm' />
         <ul className='faded-bottom no-scrollbar grid gap-4 overflow-auto pt-4 pb-16 md:grid-cols-2 lg:grid-cols-3'>
-          {filteredApps.map((app) => (
-            <li
-              key={app.name}
-              className='rounded-lg border p-4 hover:shadow-md'
-            >
-              <div className='mb-8 flex items-center justify-between'>
-                <div
-                  className={`flex size-10 items-center justify-center rounded-lg bg-muted p-2`}
-                >
-                  {app.logo}
+          {filteredApps.map((app) => {
+            const isConnected =
+              app.connected || (app.name === 'DogeSCM' && dogeConnected)
+            return (
+              <li
+                key={app.name}
+                className='rounded-lg border p-4 hover:shadow-md'
+              >
+                <div className='mb-8 flex items-center justify-between'>
+                  <div
+                    className={`flex size-10 items-center justify-center rounded-lg bg-muted p-2`}
+                  >
+                    {app.logo}
+                  </div>
+                  {app.name === 'DogeSCM' ? (
+                    <ConnectDogeSCMDialog
+                      connected={isConnected}
+                      onConnected={() => setDogeConnected(true)}
+                    />
+                  ) : (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      className={`${app.connected ? 'border border-blue-300 bg-blue-50 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950 dark:hover:bg-blue-900' : ''}`}
+                    >
+                      {app.connected ? 'Connected' : 'Connect'}
+                    </Button>
+                  )}
                 </div>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className={`${app.connected ? 'border border-blue-300 bg-blue-50 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950 dark:hover:bg-blue-900' : ''}`}
-                >
-                  {app.connected ? 'Connected' : 'Connect'}
-                </Button>
-              </div>
-              <div>
-                <h2 className='mb-1 font-semibold'>{app.name}</h2>
-                <p className='line-clamp-2 text-gray-500'>{app.desc}</p>
-              </div>
-            </li>
-          ))}
+                <div>
+                  <h2 className='mb-1 font-semibold'>{app.name}</h2>
+                  <p className='line-clamp-2 text-gray-500'>{app.desc}</p>
+                </div>
+              </li>
+            )
+          })}
         </ul>
       </Main>
     </>
