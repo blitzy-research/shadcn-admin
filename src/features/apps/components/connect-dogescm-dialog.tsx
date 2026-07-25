@@ -3,8 +3,8 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { IconDogeSCM } from '@/assets/brand-icons'
-import { showSubmittedData } from '@/lib/show-submitted-data'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -131,12 +131,13 @@ export function ConnectDogeSCMDialog({
       // current one and the component remains mounted.
       if (!isMountedRef.current || controller.signal.aborted) return
 
-      // Non-sensitive success feedback ONLY — never surface the access token or
-      // workspace URL (CWE-200). Show just the mock-derived timestamp.
-      showSubmittedData(
-        { connectedAt: result.connectedAt },
-        'DogeSCM connected successfully:'
-      )
+      // Plain success feedback ONLY — a Sonner success toast, NOT a serialized
+      // object dump. The access token and workspace URL are NEVER surfaced
+      // (CWE-200); only the mock-derived timestamp is shown, as ordinary
+      // description text.
+      toast.success('DogeSCM connected successfully', {
+        description: `Connected at ${new Date(result.connectedAt).toLocaleString()}`,
+      })
       onConnected()
       setOpen(false)
       form.reset()
