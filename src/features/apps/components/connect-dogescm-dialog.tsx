@@ -182,7 +182,12 @@ export function ConnectDogeSCMDialog({
       <DialogContent className='sm:max-w-md'>
         <DialogHeader className='text-start'>
           <DialogTitle className='flex items-center gap-2'>
-            <IconDogeSCM /> Connect DogeSCM
+            {/* Decorative icon: the visible "Connect DogeSCM" text already names
+                the dialog. aria-hidden on this instance prevents the icon's own
+                role='img'/<title>DogeSCM</title> from prepending a redundant
+                "DogeSCM" to the dialog's accessible name. The icon COMPONENT is
+                unchanged (AAP §0.8 icon convention preserved). */}
+            <IconDogeSCM aria-hidden='true' /> Connect DogeSCM
           </DialogTitle>
           <DialogDescription>
             Authorize access to sync your repositories and track commits.
@@ -222,6 +227,11 @@ export function ConnectDogeSCMDialog({
                   <FormControl>
                     <Input
                       type='password'
+                      // Access tokens are sensitive, single-use credentials that
+                      // should not be autofilled from or saved to the browser's
+                      // password store; disabling autocomplete also resolves the
+                      // DevTools "input should have autocomplete attributes" hint.
+                      autoComplete='off'
                       placeholder='Enter your access token'
                       {...field}
                     />
