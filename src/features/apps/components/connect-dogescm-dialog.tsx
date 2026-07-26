@@ -33,7 +33,17 @@ import { Input } from '@/components/ui/input'
 // whitespace-only value counts as absent rather than a valid ten-space token);
 // it never mutates the token bytes that are submitted.
 const formSchema = z.object({
-  workspaceUrl: z.url('Please enter a valid workspace URL.'),
+  // Restrict to http(s): a workspace URL is a web address, so dangerous or
+  // non-web schemes (javascript:, data:, vbscript:, file:, ftp:, mailto:) must
+  // NOT validate as a "workspace URL" (QA F-02 defense-in-depth hardening).
+  // This is still the Zod-v4 top-level `z.url()` validator (AAP §0.6.5); only
+  // the `protocol` guard is added. The message is left unchanged so the field
+  // keeps a single error surface reading exactly "Please enter a valid
+  // workspace URL." for every invalid input (malformed, empty, or bad scheme).
+  workspaceUrl: z.url({
+    protocol: /^https?$/,
+    error: 'Please enter a valid workspace URL.',
+  }),
   accessToken: z
     .string()
     .refine((token) => token.trim().length === 0 || token.trim().length >= 10, {
