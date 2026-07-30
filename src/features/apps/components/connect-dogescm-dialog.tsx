@@ -46,24 +46,6 @@ async function connectDogeSCM(_payload: ConnectDogeSCMForm) {
   return { connected: true, connectedAt: new Date().toISOString() }
 }
 
-/**
- * Guided Connect flow for the DogeSCM integration on the App Integrations page.
- *
- * Renders the catalog card's action button as its own dialog trigger, collects a
- * workspace URL and an access token, validates them on change, awaits a mocked
- * authorization call, then notifies the page so the card re-renders as
- * Connected. The dialog owns its open state, so the page passes only `connected`
- * and `onConnected` — never `open`/`onOpenChange`.
- *
- * The lifted connected flag is ephemeral by design (local component state only,
- * no global store), so a page reload returns the card to `Connect`.
- *
- * @example
- * <ConnectDogeSCMDialog
- *   connected={app.connected}
- *   onConnected={() => setConnectedApps((prev) => ({ ...prev, [app.name]: true }))}
- * />
- */
 export function ConnectDogeSCMDialog({
   connected,
   onConnected,
@@ -80,9 +62,6 @@ export function ConnectDogeSCMDialog({
   const onSubmit = (data: ConnectDogeSCMForm) => {
     setIsLoading(true)
 
-    // Every effect is applied from the success callback so that the pending
-    // flag, the lifted connected flag, the close and the field reset all land
-    // in one deterministic order once the mocked call resolves.
     toast.promise(connectDogeSCM(data), {
       loading: 'Connecting to DogeSCM…',
       success: () => {
@@ -109,9 +88,6 @@ export function ConnectDogeSCMDialog({
       }}
     >
       <DialogTrigger asChild>
-        {/* Variant, size and the connected class string are reproduced verbatim
-            from the shared catalog card in src/features/apps/index.tsx so the
-            DogeSCM card is visually indistinguishable from its neighbours. */}
         <Button
           variant='outline'
           size='sm'
