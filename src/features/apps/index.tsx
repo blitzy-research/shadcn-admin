@@ -17,6 +17,7 @@ import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { ConnectDogeSCMDialog } from './components/connect-dogescm-dialog'
 import { apps } from './data/apps'
 
 const route = getRouteApi('/_authenticated/apps/')
@@ -40,8 +41,16 @@ export function Apps() {
   const [sort, setSort] = useState(initSort)
   const [appType, setAppType] = useState(type)
   const [searchTerm, setSearchTerm] = useState(filter)
+  const [connectedApps, setConnectedApps] = useState<Record<string, boolean>>(
+    {}
+  )
 
-  const filteredApps = apps
+  const appList = apps.map((app) => ({
+    ...app,
+    connected: connectedApps[app.name] ?? app.connected,
+  }))
+
+  const filteredApps = appList
     .sort((a, b) =>
       sort === 'asc'
         ? a.name.localeCompare(b.name)
@@ -156,13 +165,25 @@ export function Apps() {
                 >
                   {app.logo}
                 </div>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className={`${app.connected ? 'border border-blue-300 bg-blue-50 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950 dark:hover:bg-blue-900' : ''}`}
-                >
-                  {app.connected ? 'Connected' : 'Connect'}
-                </Button>
+                {app.name === 'DogeSCM' ? (
+                  <ConnectDogeSCMDialog
+                    connected={app.connected}
+                    onConnected={() =>
+                      setConnectedApps((prev) => ({
+                        ...prev,
+                        [app.name]: true,
+                      }))
+                    }
+                  />
+                ) : (
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className={`${app.connected ? 'border border-blue-300 bg-blue-50 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950 dark:hover:bg-blue-900' : ''}`}
+                  >
+                    {app.connected ? 'Connected' : 'Connect'}
+                  </Button>
+                )}
               </div>
               <div>
                 <h2 className='mb-1 font-semibold'>{app.name}</h2>
