@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -52,6 +52,11 @@ export function ConnectDogeSCMDialog({
 }: ConnectDogeSCMDialogProps) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  // A second activation can reach the form before `isLoading` has re-rendered
+  // Authorize into its disabled state — a rapid double click is enough, because
+  // validation resolves asynchronously. This latch is render-independent, so it
+  // is what actually keeps a single authorization in flight per session.
+  const authorizing = useRef(false)
 
   const form = useForm<ConnectDogeSCMForm>({
     resolver: zodResolver(formSchema),
@@ -60,11 +65,15 @@ export function ConnectDogeSCMDialog({
   })
 
   const onSubmit = (data: ConnectDogeSCMForm) => {
+    if (authorizing.current) return
+
+    authorizing.current = true
     setIsLoading(true)
 
     toast.promise(connectDogeSCM(data), {
       loading: 'Connecting to DogeSCM…',
       success: () => {
+        authorizing.current = false
         setIsLoading(false)
         onConnected()
         setOpen(false)
@@ -83,6 +92,13 @@ export function ConnectDogeSCMDialog({
     <Dialog
       open={open}
       onOpenChange={(state) => {
+        // Submitting is terminal on success, so every dismissal Radix reports
+        // here — Cancel, Escape, an outside pointer-down, the close button — is
+        // ignored while an authorization is in flight. That is what stops a
+        // resolved attempt from notifying the page, clearing a newer form or
+        // closing a session the user has already dismissed or reopened.
+        if (isLoading && !state) return
+
         form.reset()
         setOpen(state)
       }}
@@ -96,7 +112,7 @@ export function ConnectDogeSCMDialog({
           {connected ? 'Connected' : 'Connect'}
         </Button>
       </DialogTrigger>
-      <DialogContent className='sm:max-w-md'>
+      <DialogContent className='sm:max-w-md' showCloseButton={!isLoading}>
         <DialogHeader className='text-start'>
           <DialogTitle>Connect DogeSCM</DialogTitle>
           <DialogDescription>
@@ -106,7 +122,7 @@ export function ConnectDogeSCMDialog({
         <Form {...form}>
           <form
             id='connect-dogescm-form'
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={(event) => form.handleSubmit(onSubmit)(event)}
             className='space-y-4'
           >
             <FormField
@@ -139,7 +155,9 @@ export function ConnectDogeSCMDialog({
         </Form>
         <DialogFooter className='gap-y-2'>
           <DialogClose asChild>
-            <Button variant='outline'>Cancel</Button>
+            <Button variant='outline' disabled={isLoading}>
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             type='submit'

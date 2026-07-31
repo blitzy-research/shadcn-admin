@@ -6,9 +6,14 @@ import { ConnectDogeSCMDialog } from './connect-dogescm-dialog'
 // Spread the original module so every other export survives — `cn` above all,
 // which the dialog, form, button and input primitives all depend on. Only the
 // simulated latency is neutralized, keeping the suite fast and deterministic.
+// Hoisted so a case can swap in a deferred promise and hold the authorization
+// inside its pending window, which is the only way to observe the guards that
+// keep a resolved attempt out of a dismissed or reopened session.
+const sleepMock = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+
 vi.mock('@/lib/utils', async (orig) => ({
   ...(await orig()),
-  sleep: vi.fn(() => Promise.resolve()),
+  sleep: sleepMock,
 }))
 
 // Hoisted because `vi.mock` factories run before module scope is initialized.
@@ -132,21 +137,67 @@ describe('ConnectDogeSCMDialog', () => {
     await expect.element(getByLabelText(/Access Token/i)).toHaveValue('')
   })
 
-  it('authorizes successfully and notifies the page exactly once', async () => {
+  it('authorizes once, resists dismissal while pending, and notifies the page exactly once', async () => {
     const onConnected = vi.fn()
+    let releaseConnect = () => {}
+    sleepMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseConnect = () => resolve()
+        })
+    )
+
     const { getByRole, getByLabelText } = await render(
       <ConnectDogeSCMDialog connected={false} onConnected={onConnected} />
     )
 
     await userEvent.click(getByRole('button', { name: /^Connect$/i }))
-    await userEvent.fill(
-      getByRole('textbox', { name: /Workspace URL/i }),
-      VALID_URL
-    )
+    const urlInput = getByRole('textbox', { name: /Workspace URL/i })
+    await userEvent.fill(urlInput, VALID_URL)
     await userEvent.fill(getByLabelText(/Access Token/i), VALID_TOKEN)
-    await userEvent.click(getByRole('button', { name: /Authorize/i }))
+
+    // Two activations inside a single task: validation resolves asynchronously,
+    // so Authorize has not re-rendered as disabled yet and only the component's
+    // latch can hold this to one authorization. `userEvent` serializes its
+    // actions and cannot express that race, hence the native activation.
+    const authorize = getByRole('button', { name: /Authorize/i })
+    const authorizeElement = authorize.element() as HTMLElement
+    authorizeElement.click()
+    authorizeElement.click()
+
+    // The attempt is now held in its pending window: Authorize and Cancel are
+    // disabled and the close button is gone, so no dismissal path is live.
+    await expect.element(authorize).toBeDisabled()
+    await expect
+      .element(getByRole('button', { name: /Cancel/i }))
+      .toBeDisabled()
+    await expect
+      .element(getByRole('button', { name: /^Close$/i }))
+      .not.toBeInTheDocument()
+    expect(sleepMock).toHaveBeenCalledOnce()
+    expect(toastPromise).toHaveBeenCalledOnce()
+
+    // Escape is ignored too, so the pending session survives intact instead of
+    // leaving a resolved attempt to reset or close a dismissed dialog.
+    await userEvent.keyboard('{Escape}')
+    await expect
+      .element(getByRole('heading', { level: 2, name: /Connect DogeSCM/i }))
+      .toBeInTheDocument()
+    await expect.element(urlInput).toHaveValue(VALID_URL)
+
+    // Submitting from a field while pending is inert as well.
+    await userEvent.click(urlInput)
+    await userEvent.keyboard('{Enter}')
+    expect(sleepMock).toHaveBeenCalledOnce()
+    expect(toastPromise).toHaveBeenCalledOnce()
+    expect(onConnected).not.toHaveBeenCalled()
+
+    releaseConnect()
 
     await vi.waitFor(() => expect(onConnected).toHaveBeenCalledOnce())
     expect(toastPromise).toHaveBeenCalledOnce()
+    await expect
+      .element(getByRole('heading', { level: 2, name: /Connect DogeSCM/i }))
+      .not.toBeInTheDocument()
   })
 })
