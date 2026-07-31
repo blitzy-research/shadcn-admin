@@ -3,12 +3,9 @@ import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { ConnectDogeSCMDialog } from './connect-dogescm-dialog'
 
-// Spread the original module so every other export survives — `cn` above all,
-// which the dialog, form, button and input primitives all depend on. Only the
-// simulated latency is neutralized, keeping the suite fast and deterministic.
-// Hoisted so a case can swap in a deferred promise and hold the authorization
-// inside its pending window, which is the only way to observe the guards that
-// keep a resolved attempt out of a dismissed or reopened session.
+// Spread the original module so `cn` survives for the primitives; only the
+// simulated latency is neutralized. Hoisted because `vi.mock` factories run
+// before module initialization, and the last case swaps in a deferred promise.
 const sleepMock = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 
 vi.mock('@/lib/utils', async (orig) => ({
@@ -165,8 +162,6 @@ describe('ConnectDogeSCMDialog', () => {
     authorizeElement.click()
     authorizeElement.click()
 
-    // The attempt is now held in its pending window: Authorize and Cancel are
-    // disabled and the close button is gone, so no dismissal path is live.
     await expect.element(authorize).toBeDisabled()
     await expect
       .element(getByRole('button', { name: /Cancel/i }))
@@ -177,15 +172,12 @@ describe('ConnectDogeSCMDialog', () => {
     expect(sleepMock).toHaveBeenCalledOnce()
     expect(toastPromise).toHaveBeenCalledOnce()
 
-    // Escape is ignored too, so the pending session survives intact instead of
-    // leaving a resolved attempt to reset or close a dismissed dialog.
     await userEvent.keyboard('{Escape}')
     await expect
       .element(getByRole('heading', { level: 2, name: /Connect DogeSCM/i }))
       .toBeInTheDocument()
     await expect.element(urlInput).toHaveValue(VALID_URL)
 
-    // Submitting from a field while pending is inert as well.
     await userEvent.click(urlInput)
     await userEvent.keyboard('{Enter}')
     expect(sleepMock).toHaveBeenCalledOnce()
