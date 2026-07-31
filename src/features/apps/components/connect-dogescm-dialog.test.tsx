@@ -3,16 +3,18 @@ import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { ConnectDogeSCMDialog } from './connect-dogescm-dialog'
 
-// Neutralize the mocked connect latency while preserving every other export of
-// `@/lib/utils` — `cn` in particular, which every vendored primitive relies on.
+// Spread the original module so every other export survives — `cn` above all,
+// which the dialog, form, button and input primitives all depend on. Only the
+// simulated latency is neutralized, keeping the suite fast and deterministic.
 vi.mock('@/lib/utils', async (orig) => ({
   ...(await orig()),
   sleep: vi.fn(() => Promise.resolve()),
 }))
 
-// The dialog applies every post-connect effect from inside `toast.promise`'s
-// `success` callback, so the shim has to actually invoke it for `onConnected`
-// to become observable.
+// Hoisted because `vi.mock` factories run before module scope is initialized.
+// The shim invokes `success` because the dialog applies every post-connect
+// effect from inside that callback, which is what makes `onConnected`
+// observable here.
 const toastPromise = vi.hoisted(() =>
   vi.fn((p: Promise<unknown>, opts: { success?: () => unknown }) => {
     p.then(() => opts.success?.())
