@@ -1,8 +1,9 @@
-import { type ChangeEvent, useState } from 'react'
+import { type ChangeEvent, useEffect, useRef, useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
 import { SlidersHorizontal, ArrowUpAZ, ArrowDownAZ } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -30,20 +31,48 @@ const appText = new Map<AppType, string>([
   ['notConnected', 'Not Connected'],
 ])
 
+// A typing burst should leave one history entry behind, not one per keystroke,
+// so the filter is written to the URL only once the user pauses.
+const FILTER_WRITE_DELAY_MS = 300
+
 export function Apps() {
-  const {
-    filter = '',
-    type = 'all',
-    sort: initSort = 'asc',
-  } = route.useSearch()
+  // The search params are the single source of truth for the three controls, so
+  // a same-route `popstate` (browser Back/Forward) rehydrates them for free.
+  const { filter = '', type: appType = 'all', sort = 'asc' } = route.useSearch()
   const navigate = route.useNavigate()
 
-  const [sort, setSort] = useState(initSort)
-  const [appType, setAppType] = useState(type)
+  // The filter box is the one control that cannot read straight from the URL:
+  // it has to stay responsive while the debounced write is still pending, so it
+  // keeps local state and is reconciled with the URL below.
   const [searchTerm, setSearchTerm] = useState(filter)
   const [connectedApps, setConnectedApps] = useState<Record<string, boolean>>(
     {}
   )
+
+  // Remembering the value we wrote is what distinguishes our own debounced
+  // write echoing back from a `filter` that arrived through the browser's
+  // history or a pasted URL. Only the latter may overwrite what is being typed.
+  const writtenFilter = useRef(filter)
+  const filterWriteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (filter === writtenFilter.current) return
+
+    // An external navigation wins over an edit that has not been written yet.
+    if (filterWriteTimeout.current) {
+      clearTimeout(filterWriteTimeout.current)
+      filterWriteTimeout.current = null
+    }
+
+    writtenFilter.current = filter
+    setSearchTerm(filter)
+  }, [filter])
+
+  useEffect(() => {
+    return () => {
+      if (filterWriteTimeout.current) clearTimeout(filterWriteTimeout.current)
+    }
+  }, [])
 
   const appList = apps.map((app) => ({
     ...app,
@@ -66,17 +95,24 @@ export function Apps() {
     .filter((app) => app.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value)
-    navigate({
-      search: (prev) => ({
-        ...prev,
-        filter: e.target.value || undefined,
-      }),
-    })
+    const value = e.target.value
+    setSearchTerm(value)
+
+    if (filterWriteTimeout.current) clearTimeout(filterWriteTimeout.current)
+    filterWriteTimeout.current = setTimeout(() => {
+      filterWriteTimeout.current = null
+      writtenFilter.current = value
+      navigate({
+        replace: true,
+        search: (prev) => ({
+          ...prev,
+          filter: value || undefined,
+        }),
+      })
+    }, FILTER_WRITE_DELAY_MS)
   }
 
   const handleTypeChange = (value: AppType) => {
-    setAppType(value)
     navigate({
       search: (prev) => ({
         ...prev,
@@ -85,9 +121,8 @@ export function Apps() {
     })
   }
 
-  const handleSortChange = (sort: 'asc' | 'desc') => {
-    setSort(sort)
-    navigate({ search: (prev) => ({ ...prev, sort }) })
+  const handleSortChange = (value: 'asc' | 'desc') => {
+    navigate({ search: (prev) => ({ ...prev, sort: value }) })
   }
 
   return (
@@ -112,14 +147,26 @@ export function Apps() {
         </div>
         <div className='my-4 flex items-end justify-between sm:my-0 sm:items-center'>
           <div className='flex flex-col gap-4 sm:my-4 sm:flex-row'>
+            {/* Screen-reader-only: the placeholder alone is not a label, and it
+                disappears the moment the user types. */}
+            <Label htmlFor='apps-filter' className='sr-only'>
+              Filter apps
+            </Label>
             <Input
+              id='apps-filter'
+              name='filter'
               placeholder='Filter apps...'
               className='h-9 w-40 lg:w-62.5'
               value={searchTerm}
               onChange={handleSearch}
             />
             <Select value={appType} onValueChange={handleTypeChange}>
-              <SelectTrigger className='w-36'>
+              {/* `combobox` takes no name from its content, so the selected
+                  value cannot double as the control's accessible name. */}
+              <SelectTrigger
+                className='w-40'
+                aria-label='Filter apps by connection status'
+              >
                 <SelectValue>{appText.get(appType)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -131,7 +178,8 @@ export function Apps() {
           </div>
 
           <Select value={sort} onValueChange={handleSortChange}>
-            <SelectTrigger className='w-16'>
+            {/* Icon-only trigger: without this it has no accessible name at all. */}
+            <SelectTrigger className='w-16' aria-label='Sort apps'>
               <SelectValue>
                 <SlidersHorizontal size={18} />
               </SelectValue>
@@ -154,6 +202,21 @@ export function Apps() {
         </div>
         <Separator className='shadow-sm' />
         <ul className='faded-bottom no-scrollbar grid gap-4 overflow-auto pt-4 pb-16 md:grid-cols-2 lg:grid-cols-3'>
+          {filteredApps.length === 0 && (
+            <li className='col-span-full'>
+              {/* `status` announces the empty result to assistive technology,
+                  which an empty grid on its own never does. */}
+              <div
+                role='status'
+                className='flex flex-col items-center gap-1 rounded-lg border border-dashed p-8 text-center'
+              >
+                <p className='font-semibold'>No apps found</p>
+                <p className='text-sm text-muted-foreground'>
+                  Try a different search term or connection filter.
+                </p>
+              </div>
+            </li>
+          )}
           {filteredApps.map((app) => (
             <li
               key={app.name}
@@ -187,7 +250,10 @@ export function Apps() {
               </div>
               <div>
                 <h2 className='mb-1 font-semibold'>{app.name}</h2>
-                <p className='line-clamp-2 text-gray-500'>{app.desc}</p>
+                {/* Semantic token, not `text-gray-500`: the palette value kept
+                    the same foreground in both themes and fell under 4.5:1 on
+                    the dark background. */}
+                <p className='line-clamp-2 text-muted-foreground'>{app.desc}</p>
               </div>
             </li>
           ))}

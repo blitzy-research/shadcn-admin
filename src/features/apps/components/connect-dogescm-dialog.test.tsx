@@ -192,4 +192,84 @@ describe('ConnectDogeSCMDialog', () => {
       .element(getByRole('heading', { level: 2, name: /Connect DogeSCM/i }))
       .not.toBeInTheDocument()
   })
+
+  it('keeps the access token out of serializable markup and exposes field metadata', async () => {
+    const { getByRole, getByLabelText } = await render(
+      <ConnectDogeSCMDialog connected={false} onConnected={vi.fn()} />
+    )
+
+    await userEvent.click(getByRole('button', { name: /^Connect$/i }))
+
+    const urlInput = getByRole('textbox', { name: /Workspace URL/i })
+    const tokenInput = getByLabelText(/Access Token/i)
+    await userEvent.fill(urlInput, VALID_URL)
+    await userEvent.fill(tokenInput, VALID_TOKEN)
+
+    const urlElement = urlInput.element() as HTMLInputElement
+    const tokenElement = tokenInput.element() as HTMLInputElement
+    const dialog = tokenElement.closest('[data-slot="dialog-content"]')!
+
+    // The live control is the only place the secret may exist. A controlled
+    // input would also mirror it into the `value` content attribute, putting it
+    // into every serialization of the element, the dialog and the document.
+    expect(tokenElement.value).toBe(VALID_TOKEN)
+    expect(tokenElement.type).toBe('password')
+    expect(tokenElement.getAttribute('value')).toBeNull()
+    expect(tokenElement.defaultValue).toBe('')
+    expect(tokenElement.outerHTML).not.toContain(VALID_TOKEN)
+    expect(dialog.innerHTML).not.toContain(VALID_TOKEN)
+    expect(document.body.innerHTML).not.toContain(VALID_TOKEN)
+
+    for (const element of [urlElement, tokenElement]) {
+      // Declining autofill keeps a workspace address and a machine token out of
+      // the browser's stored profile and password manager.
+      expect(element.getAttribute('autocomplete')).toBe('off')
+      // Required state is exposed to assistive technology only: the native
+      // attribute would hand validation to the browser and suppress the
+      // schema's own messages.
+      expect(element.getAttribute('aria-required')).toBe('true')
+      expect(element.hasAttribute('required')).toBe(false)
+
+      const describedBy = element.getAttribute('aria-describedby')!
+      expect(describedBy.split(' ')).toHaveLength(1)
+      for (const id of describedBy.split(' ')) {
+        expect(document.getElementById(id)).not.toBeNull()
+      }
+    }
+  })
+
+  it('announces validation errors and keeps every described-by reference resolvable', async () => {
+    const { getByRole, getByText, getByLabelText } = await render(
+      <ConnectDogeSCMDialog connected={false} onConnected={vi.fn()} />
+    )
+
+    await userEvent.click(getByRole('button', { name: /^Connect$/i }))
+
+    const urlInput = getByRole('textbox', { name: /Workspace URL/i })
+    const tokenInput = getByLabelText(/Access Token/i)
+    await userEvent.fill(urlInput, 'dogescm.example.com')
+    await userEvent.fill(tokenInput, 'short')
+
+    const urlError = getByText(URL_ERROR)
+    const tokenError = getByText(TOKEN_ERROR)
+    await expect.element(urlError).toBeInTheDocument()
+    await expect.element(tokenError).toBeInTheDocument()
+
+    // Without a role the messages render silently, because they appear while
+    // the user is still typing rather than in response to a submit.
+    expect(urlError.element().getAttribute('role')).toBe('alert')
+    expect(tokenError.element().getAttribute('role')).toBe('alert')
+
+    for (const element of [urlInput.element(), tokenInput.element()]) {
+      expect(element.getAttribute('aria-invalid')).toBe('true')
+
+      // In the error state the description and the message are both referenced,
+      // so both ids have to resolve to a rendered element.
+      const describedBy = element.getAttribute('aria-describedby')!
+      expect(describedBy.split(' ')).toHaveLength(2)
+      for (const id of describedBy.split(' ')) {
+        expect(document.getElementById(id)).not.toBeNull()
+      }
+    }
+  })
 })

@@ -19,6 +19,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -57,12 +58,29 @@ export function ConnectDogeSCMDialog({
   // validation resolves asynchronously. This latch is render-independent, so it
   // is what actually keeps a single authorization in flight per session.
   const authorizing = useRef(false)
+  // The access token is rendered uncontrolled (see its field below), so React
+  // never writes its value into the DOM and `form.reset()` cannot clear it.
+  // React Hook Form's own ref is no help either — for a `Controller` field it
+  // wraps focus helpers rather than exposing the node — so the element is
+  // captured here and cleared directly.
+  const accessTokenRef = useRef<HTMLInputElement | null>(null)
 
   const form = useForm<ConnectDogeSCMForm>({
     resolver: zodResolver(formSchema),
     defaultValues: { workspaceUrl: '', accessToken: '' },
     mode: 'onChange',
   })
+
+  // Clearing the live node as well as the form state is what stops a typed
+  // credential from outliving a dismissal, including across the window in which
+  // the dialog is still mounted while it animates out.
+  const resetForm = () => {
+    form.reset()
+
+    if (accessTokenRef.current) {
+      accessTokenRef.current.value = ''
+    }
+  }
 
   const onSubmit = (data: ConnectDogeSCMForm) => {
     if (authorizing.current) return
@@ -77,7 +95,7 @@ export function ConnectDogeSCMDialog({
         setIsLoading(false)
         onConnected()
         setOpen(false)
-        form.reset()
+        resetForm()
         return 'DogeSCM connected successfully.'
       },
       error: 'Error',
@@ -99,7 +117,7 @@ export function ConnectDogeSCMDialog({
         // closing a session the user has already dismissed or reopened.
         if (isLoading && !state) return
 
-        form.reset()
+        resetForm()
         setOpen(state)
       }}
     >
@@ -132,9 +150,27 @@ export function ConnectDogeSCMDialog({
                 <FormItem>
                   <FormLabel>Workspace URL</FormLabel>
                   <FormControl>
-                    <Input placeholder='https://acme.dogescm.com' {...field} />
+                    {/* `aria-required` rather than the native attribute: native
+                        constraint validation would pre-empt the submit and
+                        replace the schema's messages with browser bubbles.
+                        Autofill is declined because a workspace address is not
+                        one of the profile values a browser stores. */}
+                    <Input
+                      placeholder='https://acme.dogescm.com'
+                      autoComplete='off'
+                      aria-required='true'
+                      {...field}
+                    />
                   </FormControl>
-                  <FormMessage />
+                  {/* FormControl always points `aria-describedby` at this
+                      element's id, so it has to be rendered for the reference
+                      to resolve. */}
+                  <FormDescription>
+                    The address of the DogeSCM workspace to sync.
+                  </FormDescription>
+                  {/* `alert` is what gets an error that appears mid-typing
+                      announced; the element only exists while there is one. */}
+                  <FormMessage role='alert' />
                 </FormItem>
               )}
             />
@@ -144,10 +180,31 @@ export function ConnectDogeSCMDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Access Token</FormLabel>
+                  {/* Deliberately uncontrolled: passing `value` makes React
+                      mirror the secret into the `value` content attribute, which
+                      puts it in every DOM serialization for as long as the
+                      dialog is open. Spreading the rest of the field keeps React
+                      Hook Form in charge of validation and focus, and
+                      `autoComplete='off'` keeps a machine token out of the
+                      browser's password manager. */}
                   <FormControl>
-                    <Input type='password' {...field} />
+                    <Input
+                      type='password'
+                      autoComplete='off'
+                      aria-required='true'
+                      name={field.name}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      ref={(node) => {
+                        field.ref(node)
+                        accessTokenRef.current = node
+                      }}
+                    />
                   </FormControl>
-                  <FormMessage />
+                  <FormDescription>
+                    A DogeSCM personal access token with repository read access.
+                  </FormDescription>
+                  <FormMessage role='alert' />
                 </FormItem>
               )}
             />
