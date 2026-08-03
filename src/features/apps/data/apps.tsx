@@ -14,6 +14,7 @@ import {
   IconGitlab,
   IconDiscord,
   IconWhatsapp,
+  IconDogeSCM,
 } from '@/assets/brand-icons'
 
 export const apps = [
@@ -106,5 +107,11 @@ export const apps = [
     logo: <IconWhatsapp />,
     connected: false,
     desc: 'Easily integrate WhatsApp for direct messaging.',
+  },
+  {
+    name: 'DogeSCM',
+    logo: <IconDogeSCM />,
+    connected: false,
+    desc: 'Connect DogeSCM to sync repositories and track commits.',
   },
 ]
